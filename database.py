@@ -54,7 +54,8 @@ def _init_db():
         CREATE TABLE IF NOT EXISTS guild_settings (
             guild_id INTEGER PRIMARY KEY,
             prefix TEXT NOT NULL DEFAULT '?',
-            allowed_channel_id INTEGER
+            allowed_channel_id INTEGER,
+            trivia_cooldown_minutes INTEGER NOT NULL DEFAULT 5
         );
 
         CREATE TABLE IF NOT EXISTS levels (
@@ -82,11 +83,16 @@ def _init_db():
 
 _init_db()
 
-try:  # migration for databases created before this column existed
-    _conn.execute("ALTER TABLE guild_settings ADD COLUMN allowed_channel_id INTEGER")
-    _conn.commit()
-except sqlite3.OperationalError:
-    pass  # column already exists
+# Migrations for databases created before these columns existed
+for _ddl in (
+    "ALTER TABLE guild_settings ADD COLUMN allowed_channel_id INTEGER",
+    "ALTER TABLE guild_settings ADD COLUMN trivia_cooldown_minutes INTEGER NOT NULL DEFAULT 5",
+):
+    try:
+        _conn.execute(_ddl)
+        _conn.commit()
+    except sqlite3.OperationalError:
+        pass  # column already exists
 
 
 # ---------- Points / economy ----------
@@ -279,6 +285,30 @@ def set_allowed_channel(guild_id: int, channel_id):
         ON CONFLICT(guild_id) DO UPDATE SET allowed_channel_id = excluded.allowed_channel_id
         """,
         (guild_id, channel_id),
+    )
+    _conn.commit()
+
+
+DEFAULT_TRIVIA_COOLDOWN_MINUTES = 5
+
+
+def get_trivia_cooldown(guild_id: int) -> int:
+    """Minutes each member must wait between /trivia questions (0 = no limit)."""
+    cur = _conn.cursor()
+    row = cur.execute(
+        "SELECT trivia_cooldown_minutes FROM guild_settings WHERE guild_id = ?", (guild_id,)
+    ).fetchone()
+    return row["trivia_cooldown_minutes"] if row else DEFAULT_TRIVIA_COOLDOWN_MINUTES
+
+
+def set_trivia_cooldown(guild_id: int, minutes: int):
+    cur = _conn.cursor()
+    cur.execute(
+        """
+        INSERT INTO guild_settings (guild_id, trivia_cooldown_minutes) VALUES (?, ?)
+        ON CONFLICT(guild_id) DO UPDATE SET trivia_cooldown_minutes = excluded.trivia_cooldown_minutes
+        """,
+        (guild_id, minutes),
     )
     _conn.commit()
 
