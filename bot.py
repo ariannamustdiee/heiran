@@ -42,6 +42,7 @@ COGS = [
     "cogs.topics",
     "cogs.chessgame",
     "cogs.dama",
+    "cogs.admintools",
 ]
 
 
@@ -84,6 +85,12 @@ async def on_command_error(ctx: commands.Context, error: commands.CommandError):
             f"⏳ Slow down — try again in {max(1, round(error.retry_after))}s.",
             ephemeral=True,
             delete_after=cleanup,
+        )
+    elif ctx.command and ctx.command.name == "trivia" and isinstance(
+            error, (commands.MissingRequiredArgument, commands.BadArgument, commands.BadLiteralArgument)):
+        await ctx.send(
+            f"Choose a category: `{ctx.clean_prefix}trivia avatar` or `{ctx.clean_prefix}trivia general`.",
+            ephemeral=True, delete_after=cleanup,
         )
     elif isinstance(error, (commands.MissingRequiredArgument, commands.BadArgument, commands.BadLiteralArgument)):
         usage = f"{ctx.clean_prefix}{ctx.command.qualified_name} {ctx.command.signature}".strip()
