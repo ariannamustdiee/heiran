@@ -7,54 +7,10 @@ from discord import app_commands
 from discord.ext import commands
 
 import database as db
-from utils.trivia_data import EXTRA_QUESTIONS, build_options
+from utils.trivia_data import QUESTIONS, build_options
 
 TRIVIA_POINTS = 25
 RPS_POINTS = 15
-
-
-TRIVIA_QUESTIONS = [
-    {
-        "question": "What is the capital of the Netherlands?",
-        "options": ["Rotterdam", "Amsterdam", "The Hague", "Utrecht"],
-        "answer": "Amsterdam",
-    },
-    {
-        "question": "Which planet is known as the Red Planet?",
-        "options": ["Venus", "Mars", "Jupiter", "Saturn"],
-        "answer": "Mars",
-    },
-    {
-        "question": "What is the largest ocean on Earth?",
-        "options": ["Atlantic", "Indian", "Arctic", "Pacific"],
-        "answer": "Pacific",
-    },
-    {
-        "question": "In what year did World War II end?",
-        "options": ["1943", "1945", "1947", "1950"],
-        "answer": "1945",
-    },
-    {
-        "question": "What is the chemical symbol for gold?",
-        "options": ["Go", "Gd", "Au", "Ag"],
-        "answer": "Au",
-    },
-    {
-        "question": "Who painted the Mona Lisa?",
-        "options": ["Michelangelo", "Raphael", "Leonardo da Vinci", "Donatello"],
-        "answer": "Leonardo da Vinci",
-    },
-    {
-        "question": "How many legs does a spider have?",
-        "options": ["6", "8", "10", "12"],
-        "answer": "8",
-    },
-    {
-        "question": "What is the smallest country in the world?",
-        "options": ["Monaco", "San Marino", "Vatican City", "Liechtenstein"],
-        "answer": "Vatican City",
-    },
-]
 
 
 class TriviaView(discord.ui.View):
@@ -151,6 +107,8 @@ class Minigames(commands.Cog):
     def __init__(self, bot: commands.Bot):
         self.bot = bot
         self._last_trivia = {}  # (guild_id, user_id) -> unix time of their last question
+        self._trivia_bags = {}  # (guild_id, user_id, category) -> questions not yet asked in this round
+        self._last_asked = {}   # same key -> last question asked
         self._last_rps = {}     # (guild_id, user_id) -> unix time of their last rps game
 
     @commands.hybrid_command(name="triviacooldown", description="Set how many minutes members wait between trivia questions")
@@ -189,9 +147,25 @@ class Minigames(commands.Cog):
         else:
             await ctx.send(f"✅ Each member can now play rock-paper-scissors once every **{minutes}** minute(s).")
 
-    @commands.hybrid_command(name="trivia", description="Answer a random trivia question for points")
+    def _next_question(self, key):
+        """Each member goes through a shuffled copy of the category, so nothing repeats
+        until every question has been asked once."""
+        category = key[2]
+        bag = self._trivia_bags.get(key)
+        if not bag:
+            bag = QUESTIONS[category][:]
+            random.shuffle(bag)
+            if len(bag) > 1 and bag[-1] is self._last_asked.get(key):
+                bag[0], bag[-1] = bag[-1], bag[0]   # no back-to-back repeat across rounds
+            self._trivia_bags[key] = bag
+        q = bag.pop()
+        self._last_asked[key] = q
+        return q
+
+    @commands.hybrid_command(name="trivia", description="Answer a trivia question for points: Avatar or general knowledge")
     @commands.guild_only()
-    async def trivia(self, ctx: commands.Context):
+    @app_commands.describe(category="Avatar questions or general knowledge")
+    async def trivia(self, ctx: commands.Context, category: Literal["avatar", "general"]):
         cooldown_seconds = db.get_trivia_cooldown(ctx.guild.id) * 60
         key = (ctx.guild.id, ctx.author.id)
         now = time.time()
@@ -205,19 +179,16 @@ class Minigames(commands.Cog):
             return
         self._last_trivia[key] = now
 
-        q = random.choice(TRIVIA_QUESTIONS + EXTRA_QUESTIONS)
-
-        if "options" in q:  # built-in question with its own options
-            options, shuffle = q["options"][:], True
-        else:               # question from utils/trivia_data.py
-            other_answers = [x["answer"] for x in TRIVIA_QUESTIONS + EXTRA_QUESTIONS if x is not q]
-            options, shuffle = build_options(q, other_answers)
+        q = self._next_question((ctx.guild.id, ctx.author.id, category))
+        other_answers = [x["answer"] for x in QUESTIONS[category] if x is not q]
+        options, shuffle = build_options(q, other_answers)
         if shuffle:
             random.shuffle(options)
 
         view = TriviaView(correct_answer=q["answer"], asker_id=ctx.author.id)
         view.build_buttons(options)
-        await ctx.send(f"🧠 **{q['question']}**", view=view)
+        title = "🌊🔥 Avatar trivia" if category == "avatar" else "🧠 General knowledge"
+        await ctx.send(f"**{title}**\n{q['question']}", view=view)
 
     @commands.hybrid_command(name="rps", description="Play rock-paper-scissors against the bot")
     @commands.guild_only()
