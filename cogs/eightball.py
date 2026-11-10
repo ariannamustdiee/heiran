@@ -21,12 +21,21 @@ RESPONSES = [
     "Better not tell you now.",
     "Cannot predict now.",
     "Concentrate and ask again.",
+    "You know the answer.",
+    "I'll think about it, ask later.",
+    "I trust you, look at yourself for the answer.",
+    "Who told you I would have the answer?",
     # Negative
     "Don't count on it.",
     "My reply is no.",
     "My sources say no.",
     "Outlook not so good.",
     "Very doubtful.",
+    # Rude
+    "Fuck you.",
+    "Are you even asking?",
+    "What do you think?",
+    "Go ask Atuat.",
 ]
 
 
